@@ -67,7 +67,7 @@ class Menu:
             {"text": "GESTON DE PAGOS", "command": self.open_pagos_window},
             {"text": "GESTION DE USUARIOS", "command": self.open_usuarios_window},
             {"text": "HISTORIAL ACADEMICO ", "command": self.open_historial_window},
-            {"text": "CONFIGURACIÓN", "command": self.open_settings_window}
+            {"text": "CURSOS", "command": self.open_cursos_window}
         ]
         
         for config in button_config:
@@ -93,9 +93,14 @@ class Menu:
         self.app.show_club_management()
         self.app.root.update_idletasks()
 
+# Método para abrir la ventana de gestión de usuarios
     def open_usuarios_window(self):
         """Abre la ventana de gestión de usuarios"""
-        messagebox.showinfo("Aviso", "Aquí se abriría la ventana de Gestión de Usuarios")
+        if hasattr(self.app, 'usuarios'):
+            self.app._clear_window()
+        self.app.show_users_management()
+        self.app.root.update_idletasks()
+       
     
 # Método para abrir la ventana de gestión de miembros
     def open_members_window(self):
@@ -120,14 +125,21 @@ class Menu:
             self.app._clear_window()
         self.app.show_pagos_management()
         self.app.root.update_idletasks()
-    
-    def open_settings_window(self):
-        """Abre la ventana de configuración"""
-        messagebox.showinfo("Aviso", "Aquí se abriría la ventana de Configuración")
+
+# Método para abrir la ventana de gestión de cursos
+    def open_cursos_window(self):
+        """Abre la ventana de gestión de cursos"""
+        if hasattr(self.app, 'cursos'):
+            self.app._clear_window()
+        self.app.show_cursos_management()
+        self.app.root.update_idletasks()
 
     def open_historial_window(self):
         """Abre la ventana de historial académico"""
-        messagebox.showinfo("Aviso", "Aquí se abriría la ventana de Historial Académico")
+        if hasattr(self.app, 'historial'):
+            self.app._clear_window()
+        self.app.show_historial_academico()
+        self.app.root.update_idletasks()
     
     def show_menu(self):
         """Muestra nuevamente el menú principal"""

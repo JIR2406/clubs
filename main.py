@@ -1,11 +1,14 @@
 from tkinter import messagebox
 import customtkinter as ctk
 from clubs import ClubManagementWindow
+from cursos import CourseManagementWindow
+from historial_academico import AcademicHistoryWindow
 from login import LoginApp
 from menuAdmin import Menu
 from miembros import MemberManagementWindow
 from membresias import MembershipManagementWindow
 from pagos import PaymentManagementWindow
+from usuario import UserManagementWindow
 
 class AppManager:
     def __init__(self):
@@ -89,6 +92,7 @@ class AppManager:
             app_manager=self
         )
 
+# metodo para mostrar la ventana de gestión de pagos
     def show_pagos_management(self):
         self._clear_window()
         
@@ -98,6 +102,50 @@ class AppManager:
         
         # Instanciar la ventana de gestión dentro del contenedor
         self.pagos = PaymentManagementWindow(
+            root=container,  # Pasamos el frame como contenedor
+            app_manager=self
+        )
+
+# metodo para mostrar la ventana de gestión de cursos
+    def show_users_management(self):
+        """Muestra la ventana de gestión de usuarios"""
+        self._clear_window()
+        
+        # Crear frame contenedor
+        container = ctk.CTkFrame(self.root)
+        container.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Instanciar la ventana de gestión dentro del contenedor
+        self.usuarios = UserManagementWindow(
+            root=container,  # Pasamos el frame como contenedor
+            app_manager=self
+        )
+
+# metodo para mostrar la ventana de gestión de cursos
+    def show_historial_academico(self):
+        """Muestra la ventana de historial académico"""
+        self._clear_window()
+        
+        # Crear frame contenedor
+        container = ctk.CTkFrame(self.root)
+        container.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Instanciar la ventana de gestión dentro del contenedor
+        self.historial = AcademicHistoryWindow(
+            root=container,  # Pasamos el frame como contenedor
+            app_manager=self
+        )
+# metodo para mostrar la ventana de gestión de cursos
+    def show_cursos_management(self):
+        """Muestra la ventana de gestión de cursos"""
+        self._clear_window()
+        
+        # Crear frame contenedor
+        container = ctk.CTkFrame(self.root)
+        container.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Instanciar la ventana de gestión dentro del contenedor
+        self.cursos = CourseManagementWindow(
             root=container,  # Pasamos el frame como contenedor
             app_manager=self
         )

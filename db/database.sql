@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS asistencia_eventos (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Create indexes for better performance
-CREATE INDEX idx_estudiante_nombre ON estudiantes(nombre, apellido);
+CREATE INDEX idx_estudiante_nombre ON estudiantes(nombre, appat, apmat);
 CREATE INDEX idx_club_nombre ON clubes(nombre_club);
 CREATE INDEX idx_membresia_estado ON membresias(estado_membresia);
 CREATE INDEX idx_evento_fecha ON eventos_club(fecha_inicio);
