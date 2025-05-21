@@ -1,5 +1,6 @@
 import customtkinter as ctk
 from tkinter import messagebox
+from conn import get_connection
 
 class CourseManagementWindow:
     def __init__(self, root, app_manager):
@@ -121,35 +122,33 @@ class CourseManagementWindow:
         
         # Campos del formulario según la tabla cursos
         fields = [
-            {"label": "Código Curso*", "var_name": "code_var", "required": True},
-            {"label": "Nombre Curso*", "var_name": "name_var", "required": True},
-            {"label": "Créditos", "var_name": "credits_var"},
-            {"label": "Departamento", "var_name": "department_var"},
-            {"label": "Descripción", "var_name": "description_var", "multiline": True}
+            {"label": "ID Curso", "name": "id", "editable": False},
+            {"label": "Código Curso*", "name": "code"},
+            {"label": "Nombre Curso*", "name": "name"},
+            {"label": "Créditos", "name": "credits"},
+            {"label": "Departamento", "name": "department"},
+            {"label": "Descripción", "name": "description", "type": "textbox"}
         ]
         
-        self.form_vars = {}
+        self.form_widgets = {}
         
         for field in fields:
             frame = ctk.CTkFrame(self.form_frame, fg_color="transparent")
             frame.pack(fill="x", pady=5)
             
-            label_text = field["label"].replace("*", "") + (" *" if field.get("required") else "")
+            label_text = field["label"].replace("*", "") + (" *" if "*" in field["label"] else "")
             ctk.CTkLabel(frame, text=label_text, width=120).pack(side="left")
             
-            var = ctk.StringVar()
-            
-            if field.get("multiline"):
-                textbox = ctk.CTkTextbox(frame, height=80)
-                textbox.pack(side="right", fill="x", expand=True)
-                var.textbox = textbox
+            if field.get("type") == "textbox":
+                widget = ctk.CTkTextbox(frame, height=80)
+                widget.pack(side="right", fill="x", expand=True)
             else:
-                ctk.CTkEntry(
-                    frame,
-                    textvariable=var
-                ).pack(side="right", fill="x", expand=True)
+                widget = ctk.CTkEntry(frame)
+                if not field.get("editable", True):
+                    widget.configure(state="disabled")
+                widget.pack(side="right", fill="x", expand=True)
             
-            self.form_vars[field["var_name"]] = var
+            self.form_widgets[field["name"]] = widget
         
         # Botones de acción
         button_frame = ctk.CTkFrame(self.form_frame, fg_color="transparent")
@@ -199,7 +198,9 @@ class CourseManagementWindow:
         
         for course in courses:
             frame = ctk.CTkFrame(self.list_scroll, height=45)
-            frame.pack(fill="x", pady=2)
+            frame.pack(fill="x", pady=5)
+
+            frame.grid_columnconfigure(0, weight=1)
             
             # Formatear información para mostrar
             text = f"{course['codigo_curso']} - {course['nombre_curso']}"
@@ -210,14 +211,14 @@ class CourseManagementWindow:
                 frame,
                 text=text,
                 anchor="w"
-            ).pack(side="left", padx=10, fill="x", expand=True)
+            ).grid(row=0, column=0, padx=10,pady=5, sticky="w")
             
             ctk.CTkButton(
                 frame,
                 text="Editar",
                 width=60,
                 command=lambda c=course: self.load_course_data(c)
-            ).pack(side="right", padx=2)
+            ).grid(row=0, column=1, sticky="e", padx=10)
     
     def load_course_data(self, course):
         """Carga los datos de un curso en el formulario"""
@@ -228,27 +229,37 @@ class CourseManagementWindow:
         self.delete_btn.configure(state="normal")
         
         field_mapping = {
-            "code_var": course.get("codigo_curso", ""),
-            "name_var": course.get("nombre_curso", ""),
-            "credits_var": str(course.get("creditos", "")),
-            "department_var": course.get("departamento", ""),
-            "description_var": course.get("descripcion", "")
+            "id": str(course.get("id_curso", "")),
+            "code": course.get("codigo_curso", ""),
+            "name": course.get("nombre_curso", ""),
+            "credits": str(course.get("creditos", "")) if course.get("creditos") is not None else "",
+            "department": course.get("departamento", "") if course.get("departamento") else "",
+            "description": course.get("descripcion", "") if course.get("descripcion") else ""
         }
         
-        for var_name, value in field_mapping.items():
-            if var_name == "description_var":
-                self.form_vars[var_name].textbox.delete("1.0", "end")
-                self.form_vars[var_name].textbox.insert("1.0", value)
-            else:
-                self.form_vars[var_name].set(value)
+        for field_name, value in field_mapping.items():
+            widget = self.form_widgets[field_name]
+            
+            if isinstance(widget, ctk.CTkEntry):
+                widget.configure(state="normal")
+                widget.delete(0, "end")
+                widget.insert(0, value)
+                if field_name == "id":
+                    widget.configure(state="disabled")
+            elif isinstance(widget, ctk.CTkTextbox):
+                widget.delete("1.0", "end")
+                widget.insert("1.0", value)
     
     def clear_form(self):
         """Limpia el formulario"""
-        for var_name, var in self.form_vars.items():
-            if hasattr(var, 'textbox'):
-                var.textbox.delete("1.0", "end")
-            else:
-                var.set("")
+        for field_name, widget in self.form_widgets.items():
+            if isinstance(widget, ctk.CTkEntry):
+                widget.configure(state="normal")
+                widget.delete(0, "end")
+                if field_name == "id":
+                    widget.configure(state="disabled")
+            elif isinstance(widget, ctk.CTkTextbox):
+                widget.delete("1.0", "end")
         
         self.current_course = None
         self.form_title.configure(text="Nuevo Curso")
@@ -258,14 +269,16 @@ class CourseManagementWindow:
         """Valida los campos del formulario"""
         errors = []
         
-        required_fields = ["code_var", "name_var"]
+        required_fields = ["code", "name"]
         for field in required_fields:
-            if not self.form_vars[field].get():
-                field_name = field.replace("_var", "").replace("_", " ").title()
+            widget = self.form_widgets[field]
+            value = widget.get().strip()
+            if not value:
+                field_name = field.replace("_", " ").title()
                 errors.append(f"El campo {field_name} es obligatorio")
         
         # Validar que créditos sea numérico si existe
-        credits = self.form_vars["credits_var"].get()
+        credits = self.form_widgets["credits"].get().strip()
         if credits:
             try:
                 int(credits)
@@ -276,6 +289,21 @@ class CourseManagementWindow:
             messagebox.showerror("Errores en el formulario", "\n".join(errors))
             return False
         return True
+    
+    def get_form_data(self):
+        """Obtiene los datos del formulario en un diccionario"""
+        data = {
+            "codigo_curso": self.form_widgets["code"].get().strip(),
+            "nombre_curso": self.form_widgets["name"].get().strip(),
+            "descripcion": self.form_widgets["description"].get("1.0", "end-1c").strip() or None,
+            "creditos": int(self.form_widgets["credits"].get()) if self.form_widgets["credits"].get().strip() else None,
+            "departamento": self.form_widgets["department"].get().strip() or None
+        }
+        
+        if self.current_course:
+            data["id_curso"] = self.current_course["id_curso"]
+        
+        return data
     
     def search_courses(self):
         """Busca cursos según el criterio"""
@@ -332,26 +360,60 @@ class CourseManagementWindow:
         if not self.validate_form():
             return
         
-        course_data = {
-            "codigo_curso": self.form_vars["code_var"].get(),
-            "nombre_curso": self.form_vars["name_var"].get(),
-            "descripcion": self.form_vars["description_var"].textbox.get("1.0", "end-1c") or None,
-            "creditos": int(self.form_vars["credits_var"].get()) if self.form_vars["credits_var"].get() else None,
-            "departamento": self.form_vars["department_var"].get() or None
-        }
+        course_data = self.get_form_data()
         
-        if self.current_course:
-            course_data["id_curso"] = self.current_course["id_curso"]
-            success = self.save_course_to_db(course_data, is_update=True)
-            action = "actualizado"
-        else:
-            success = self.save_course_to_db(course_data)
-            action = "registrado"
-        
-        if success:
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            if self.current_course:
+                # Actualizar curso existente
+                query = """UPDATE cursos SET 
+                          codigo_curso = %s,
+                          nombre_curso = %s,
+                          descripcion = %s,
+                          creditos = %s,
+                          departamento = %s
+                          WHERE id_curso = %s"""
+                params = (
+                    course_data['codigo_curso'],
+                    course_data['nombre_curso'],
+                    course_data['descripcion'],
+                    course_data['creditos'],
+                    course_data['departamento'],
+                    course_data['id_curso']
+                )
+                action = "actualizado"
+            else:
+                # Crear nuevo curso
+                query = """INSERT INTO cursos (
+                          codigo_curso, nombre_curso, descripcion,
+                          creditos, departamento
+                          ) VALUES (%s, %s, %s, %s, %s)"""
+                params = (
+                    course_data['codigo_curso'],
+                    course_data['nombre_curso'],
+                    course_data['descripcion'],
+                    course_data['creditos'],
+                    course_data['departamento']
+                )
+                action = "registrado"
+            
+            cursor.execute(query, params)
+            conn.commit()
+            
             messagebox.showinfo("Éxito", f"Curso {action} correctamente")
             self.update_courses_list()
             self.clear_form()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al guardar curso:\n{str(e)}")
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                conn.close()
     
     def delete_course(self):
         """Elimina el curso actual"""
@@ -366,114 +428,56 @@ class CourseManagementWindow:
             icon="warning"
         )
         
-        if confirmacion:
-            success = self.delete_course_from_db(self.current_course["id_curso"])
+        if not confirmacion:
+            return
             
-            if success:
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                "DELETE FROM cursos WHERE id_curso = %s",
+                (self.current_course['id_curso'],)
+            )
+            conn.commit()
+            
+            if cursor.rowcount > 0:
                 messagebox.showinfo("Éxito", "Curso eliminado correctamente")
                 self.update_courses_list()
                 self.clear_form()
             else:
                 messagebox.showerror("Error", "No se pudo eliminar el curso")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al eliminar curso:\n{str(e)}")
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                conn.close()
     
     def cancel_edit(self):
         """Cancela la edición actual"""
         self.clear_form()
 
-    # ======================
-    # MÉTODOS DE BASE DE DATOS (COMENTADOS)
-    # ======================
-
     def get_courses_from_db(self):
-        """OBTENER CURSOS DESDE BD (implementación comentada)"""
-        """
+        """Obtiene todos los cursos de la base de datos"""
+        conn = None
         try:
-            cursor = self.db_connection.cursor(dictionary=True)
+            conn = get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
             query = '''
                 SELECT * FROM cursos
                 ORDER BY nombre_curso
             '''
             cursor.execute(query)
             return cursor.fetchall()
+            
         except Exception as e:
             messagebox.showerror("Error", f"Error al cargar cursos:\n{str(e)}")
             return []
-        """
-        # Datos de ejemplo (eliminar en implementación real)
-        return [
-            {
-                "id_curso": 1,
-                "codigo_curso": "PROG101",
-                "nombre_curso": "Programación Básica",
-                "descripcion": "Introducción a la programación con Python",
-                "creditos": 4,
-                "departamento": "Informática"
-            },
-            {
-                "id_curso": 2,
-                "codigo_curso": "BD202",
-                "nombre_curso": "Bases de Datos",
-                "descripcion": "Fundamentos de diseño y consulta de bases de datos",
-                "creditos": 3,
-                "departamento": "Informática"
-            }
-        ]
-
-    def save_course_to_db(self, course_data, is_update=False):
-        """GUARDAR CURSO EN BD (implementación comentada)"""
-        """
-        try:
-            cursor = self.db_connection.cursor()
-            
-            if is_update:
-                query = '''UPDATE cursos SET 
-                          codigo_curso = %s, nombre_curso = %s, 
-                          descripcion = %s, creditos = %s,
-                          departamento = %s
-                          WHERE id_curso = %s'''
-                params = (
-                    course_data['codigo_curso'],
-                    course_data['nombre_curso'],
-                    course_data['descripcion'],
-                    course_data['creditos'],
-                    course_data['departamento'],
-                    course_data['id_curso']
-                )
-            else:
-                query = '''INSERT INTO cursos (
-                          codigo_curso, nombre_curso, descripcion,
-                          creditos, departamento
-                          ) VALUES (%s, %s, %s, %s, %s)'''
-                params = (
-                    course_data['codigo_curso'],
-                    course_data['nombre_curso'],
-                    course_data['descripcion'],
-                    course_data['creditos'],
-                    course_data['departamento']
-                )
-            
-            cursor.execute(query, params)
-            self.db_connection.commit()
-            return cursor.rowcount > 0
-        except Exception as e:
-            self.db_connection.rollback()
-            messagebox.showerror("Error", f"Error al guardar curso:\n{str(e)}")
-            return False
-        """
-        return True  # Simulación para pruebas
-
-    def delete_course_from_db(self, course_id):
-        """ELIMINAR CURSO DE BD (implementación comentada)"""
-        """
-        try:
-            cursor = self.db_connection.cursor()
-            query = "DELETE FROM cursos WHERE id_curso = %s"
-            cursor.execute(query, (course_id,))
-            self.db_connection.commit()
-            return cursor.rowcount > 0
-        except Exception as e:
-            self.db_connection.rollback()
-            messagebox.showerror("Error", f"Error al eliminar curso:\n{str(e)}")
-            return False
-        """
-        return True  # Simulación para pruebas
+        finally:
+            if conn:
+                conn.close()
