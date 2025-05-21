@@ -1,6 +1,8 @@
 import customtkinter as ctk
 from tkinter import messagebox
 from datetime import datetime
+from conn import get_connection
+import re
 
 class UserManagementWindow:
     def __init__(self, root, app_manager):
@@ -120,70 +122,51 @@ class UserManagementWindow:
         )
         self.form_title.pack(pady=(0, 20))
         
-        # Campos del formulario según la tabla usuarios
+        # Campos del formulario según la estructura de la tabla usuarios
         fields = [
-            {"label": "Nombre Usuario*", "var_name": "username_var", "required": True},
-            {"label": "Contraseña*", "var_name": "password_var", "required": True, "password": True},
-            {"label": "Correo Electrónico*", "var_name": "email_var", "required": True},
-            {"label": "Rol*", "var_name": "role_var", "required": True},
-            {"label": "Estado*", "var_name": "status_var", "required": True},
-            {"label": "ID Estudiante", "var_name": "student_id_var"},
-            {"label": "Notas", "var_name": "notes_var", "multiline": True}
+            {"label": "ID Usuario", "name": "id", "editable": False},
+            {"label": "Nombre Usuario*", "name": "username"},
+            {"label": "Contraseña*", "name": "password", "password": True},
+            {"label": "Correo Electrónico*", "name": "email"},
+            {"label": "Rol*", "name": "role", "type": "combobox", 
+             "values": ["Administrador", "Coordinador"]},
+            {"label": "Estado*", "name": "status", "type": "combobox", 
+             "values": ["Activo", "Inactivo", "Suspendido"]},
+            {"label": "ID Estudiante", "name": "student_id"}
         ]
         
-        self.form_vars = {}
+        self.form_widgets = {}
         
         for field in fields:
             frame = ctk.CTkFrame(self.form_frame, fg_color="transparent")
             frame.pack(fill="x", pady=5)
             
-            label_text = field["label"].replace("*", "") + (" *" if field.get("required") else "")
+            label_text = field["label"].replace("*", "") + (" *" if "*" in field["label"] else "")
             ctk.CTkLabel(frame, text=label_text, width=120).pack(side="left")
             
-            var = ctk.StringVar()
-            
-            if field["var_name"] == "role_var":
-                ctk.CTkComboBox(
-                    frame,
-                    variable=var,
-                    values=["Administrador", "Coordinador"],
-                    state="readonly"
-                ).pack(side="right", fill="x", expand=True)
-            elif field["var_name"] == "status_var":
-                ctk.CTkComboBox(
-                    frame,
-                    variable=var,
-                    values=["Activo", "Inactivo", "Suspendido"],
-                    state="readonly"
-                ).pack(side="right", fill="x", expand=True)
+            if field.get("type") == "combobox":
+                widget = ctk.CTkComboBox(frame, values=field["values"], state="readonly")
+                widget.pack(side="right", fill="x", expand=True)
+                widget.set(field["values"][0])
             elif field.get("password"):
-                entry = ctk.CTkEntry(
-                    frame,
-                    show="•",
-                    textvariable=var
-                )
-                entry.pack(side="right", fill="x", expand=True)
-                var.entry = entry  # Guardar referencia para poder mostrar/ocultar
+                widget = ctk.CTkEntry(frame, show="•")
+                widget.pack(side="right", fill="x", expand=True)
                 
                 # Botón para mostrar/ocultar contraseña
                 eye_btn = ctk.CTkButton(
                     frame,
                     text="👁",
                     width=30,
-                    command=lambda e=entry: self.toggle_password_visibility(e)
+                    command=lambda w=widget: self.toggle_password_visibility(w)
                 )
                 eye_btn.pack(side="right", padx=(5, 0))
-            elif field.get("multiline"):
-                textbox = ctk.CTkTextbox(frame, height=60)
-                textbox.pack(side="right", fill="x", expand=True)
-                var.textbox = textbox
             else:
-                ctk.CTkEntry(
-                    frame,
-                    textvariable=var
-                ).pack(side="right", fill="x", expand=True)
+                widget = ctk.CTkEntry(frame)
+                if not field.get("editable", True):
+                    widget.configure(state="disabled")
+                widget.pack(side="right", fill="x", expand=True)
             
-            self.form_vars[field["var_name"]] = var
+            self.form_widgets[field["name"]] = widget
         
         # Botones de acción
         button_frame = ctk.CTkFrame(self.form_frame, fg_color="transparent")
@@ -239,26 +222,31 @@ class UserManagementWindow:
             return
         
         for user in users:
-            frame = ctk.CTkFrame(self.list_scroll, height=45)
-            frame.pack(fill="x", pady=2)
-            
-            # Formatear información para mostrar
+            frame = ctk.CTkFrame(self.list_scroll, height=50)
+            frame.pack(fill="x", pady=2, padx=5)
+
+            frame.grid_columnconfigure(0, weight=1)  # Permite que el texto se expanda
+
             text = (f"{user['nombre_usuario']} - {user['correo']} "
-                   f"({user['rol']}) - {user['estado']}")
-            
-            ctk.CTkLabel(
+                    f"({user['rol']}) - {user['estado']}")
+
+            label = ctk.CTkLabel(
                 frame,
                 text=text,
                 anchor="w"
-            ).pack(side="left", padx=10, fill="x", expand=True)
-            
-            ctk.CTkButton(
+            )
+            label.grid(row=0, column=0, sticky="w", padx=10, pady=5)
+
+            edit_button = ctk.CTkButton(
                 frame,
                 text="Editar",
-                width=60,
+                width=70,
+                height=30,
                 command=lambda u=user: self.load_user_data(u)
-            ).pack(side="right", padx=2)
-    
+            )
+            edit_button.grid(row=0, column=1, sticky="e", padx=10)
+
+
     def load_user_data(self, user):
         """Carga los datos de un usuario en el formulario"""
         self.current_user = user
@@ -268,66 +256,90 @@ class UserManagementWindow:
         self.delete_btn.configure(state="normal")
         
         field_mapping = {
-            "username_var": user.get("nombre_usuario", ""),
-            "password_var": user.get("contrasena", ""),
-            "email_var": user.get("correo", ""),
-            "role_var": user.get("rol", "Coordinador"),
-            "status_var": user.get("estado", "Activo"),
-            "student_id_var": str(user.get("id_estudiante", "")),
-            "notes_var": user.get("notas", "")
+            "id": str(user.get("id_usuario", "")),
+            "username": user.get("nombre_usuario", ""),
+            "password": user.get("contrasena", ""),
+            "email": user.get("correo", ""),
+            "role": user.get("rol", "Coordinador"),
+            "status": user.get("estado", "Activo"),
+            "student_id": str(user.get("id_estudiante", "")) if user.get("id_estudiante") else ""
         }
         
-        for var_name, value in field_mapping.items():
-            if var_name == "notes_var":
-                self.form_vars[var_name].textbox.delete("1.0", "end")
-                self.form_vars[var_name].textbox.insert("1.0", value)
-            else:
-                self.form_vars[var_name].set(value)
+        for field_name, value in field_mapping.items():
+            widget = self.form_widgets[field_name]
+            
+            if isinstance(widget, ctk.CTkEntry):
+                widget.configure(state="normal")
+                widget.delete(0, "end")
+                widget.insert(0, value)
+                if field_name == "id":
+                    widget.configure(state="disabled")
+            elif isinstance(widget, ctk.CTkComboBox):
+                widget.set(value)
     
     def clear_form(self):
         """Limpia el formulario"""
-        for var_name, var in self.form_vars.items():
-            if hasattr(var, 'textbox'):
-                var.textbox.delete("1.0", "end")
-            elif hasattr(var, 'entry'):
-                var.entry.configure(show="•")
-                var.set("")
-            else:
-                var.set("")
+        for field_name, widget in self.form_widgets.items():
+            if isinstance(widget, ctk.CTkEntry):
+                widget.configure(state="normal")
+                widget.delete(0, "end")
+                if field_name == "id":
+                    widget.configure(state="disabled")
+            elif isinstance(widget, ctk.CTkComboBox):
+                widget.set(widget._values[0])
         
         self.current_user = None
         self.form_title.configure(text="Nuevo Usuario")
         self.delete_btn.configure(state="disabled")
-        self.form_vars["role_var"].set("Coordinador")
-        self.form_vars["status_var"].set("Activo")
     
     def validate_form(self):
         """Valida los campos del formulario"""
         errors = []
         
-        required_fields = ["username_var", "password_var", "email_var", "role_var", "status_var"]
+        required_fields = ["username", "password", "email", "role", "status"]
         for field in required_fields:
-            if not self.form_vars[field].get():
-                field_name = field.replace("_var", "").replace("_", " ").title()
+            widget = self.form_widgets[field]
+            value = ""
+            
+            if isinstance(widget, ctk.CTkEntry):
+                value = widget.get().strip()
+            elif isinstance(widget, ctk.CTkComboBox):
+                value = widget.get().strip()
+            
+            if not value:
+                field_name = field.replace("_", " ").title()
                 errors.append(f"El campo {field_name} es obligatorio")
         
         # Validar formato de email
-        email = self.form_vars["email_var"].get()
-        if email and "@" not in email:
+        email = self.form_widgets["email"].get().strip()
+        if email and not re.match(r"[^@]+@[^@]+\.[^@]+", email):
             errors.append("El correo electrónico no es válido")
         
         # Validar que student_id sea numérico si existe
-        student_id = self.form_vars["student_id_var"].get()
-        if student_id:
-            try:
-                int(student_id)
-            except ValueError:
-                errors.append("El ID de estudiante debe ser un número")
+        student_id = self.form_widgets["student_id"].get().strip()
+        if student_id and not student_id.isdigit():
+            errors.append("El ID de estudiante debe ser un número")
         
         if errors:
             messagebox.showerror("Errores en el formulario", "\n".join(errors))
             return False
         return True
+    
+    def get_form_data(self):
+        """Obtiene los datos del formulario en un diccionario"""
+        data = {
+            "nombre_usuario": self.form_widgets["username"].get().strip(),
+            "contrasena": self.form_widgets["password"].get().strip(),
+            "correo": self.form_widgets["email"].get().strip(),
+            "rol": self.form_widgets["role"].get().strip(),
+            "estado": self.form_widgets["status"].get().strip(),
+            "id_estudiante": int(self.form_widgets["student_id"].get()) if self.form_widgets["student_id"].get().strip() else None
+        }
+        
+        if self.current_user:
+            data["id_usuario"] = self.current_user["id_usuario"]
+        
+        return data
     
     def search_users(self):
         """Busca usuarios según el criterio"""
@@ -385,28 +397,65 @@ class UserManagementWindow:
         if not self.validate_form():
             return
         
-        user_data = {
-            "nombre_usuario": self.form_vars["username_var"].get(),
-            "contrasena": self.form_vars["password_var"].get(),
-            "correo": self.form_vars["email_var"].get(),
-            "rol": self.form_vars["role_var"].get(),
-            "estado": self.form_vars["status_var"].get(),
-            "id_estudiante": int(self.form_vars["student_id_var"].get()) if self.form_vars["student_id_var"].get() else None,
-            "notas": self.form_vars["notes_var"].textbox.get("1.0", "end-1c") or None
-        }
+        user_data = self.get_form_data()
         
-        if self.current_user:
-            user_data["id_usuario"] = self.current_user["id_usuario"]
-            success = self.save_user_to_db(user_data, is_update=True)
-            action = "actualizado"
-        else:
-            success = self.save_user_to_db(user_data)
-            action = "registrado"
-        
-        if success:
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            if self.current_user:
+                # Actualizar usuario existente
+                query = """UPDATE usuarios SET 
+                          nombre_usuario = %s,
+                          contrasena = IF(%s IS NULL OR %s = '', contrasena, %s),
+                          correo = %s,
+                          rol = %s,
+                          estado = %s,
+                          id_estudiante = %s
+                          WHERE id_usuario = %s"""
+                params = (
+                    user_data['nombre_usuario'],
+                    user_data['contrasena'],
+                    user_data['contrasena'],
+                    user_data['contrasena'],
+                    user_data['correo'],
+                    user_data['rol'],
+                    user_data['estado'],
+                    user_data['id_estudiante'],
+                    user_data['id_usuario']
+                )
+                action = "actualizado"
+            else:
+                # Crear nuevo usuario
+                query = """INSERT INTO usuarios (
+                          nombre_usuario, contrasena, correo,
+                          rol, estado, id_estudiante
+                          ) VALUES (%s, %s, %s, %s, %s, %s)"""
+                params = (
+                    user_data['nombre_usuario'],
+                    user_data['contrasena'],
+                    user_data['correo'],
+                    user_data['rol'],
+                    user_data['estado'],
+                    user_data['id_estudiante']
+                )
+                action = "registrado"
+            
+            cursor.execute(query, params)
+            conn.commit()
+            
             messagebox.showinfo("Éxito", f"Usuario {action} correctamente")
             self.update_users_list()
             self.clear_form()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al guardar usuario:\n{str(e)}")
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                conn.close()
     
     def delete_user(self):
         """Elimina el usuario actual"""
@@ -422,29 +471,50 @@ class UserManagementWindow:
             icon="warning"
         )
         
-        if confirmacion:
-            success = self.delete_user_from_db(self.current_user["id_usuario"])
+        if not confirmacion:
+            return
             
-            if success:
+        conn = None
+        try:
+            # Verificar si el usuario a eliminar es el mismo que está logueado
+            if hasattr(self.app, 'current_user') and self.app.current_user and self.app.current_user['id_usuario'] == self.current_user['id_usuario']:
+                raise Exception("No puedes eliminar tu propio usuario mientras estás logueado")
+            
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                "DELETE FROM usuarios WHERE id_usuario = %s",
+                (self.current_user['id_usuario'],)
+            )
+            conn.commit()
+            
+            if cursor.rowcount > 0:
                 messagebox.showinfo("Éxito", "Usuario eliminado correctamente")
                 self.update_users_list()
                 self.clear_form()
             else:
                 messagebox.showerror("Error", "No se pudo eliminar el usuario")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al eliminar usuario:\n{str(e)}")
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                conn.close()
     
     def cancel_edit(self):
         """Cancela la edición actual"""
         self.clear_form()
 
-    # ======================
-    # MÉTODOS DE BASE DE DATOS (COMENTADOS)
-    # ======================
-
     def get_users_from_db(self):
-        """OBTENER USUARIOS DESDE BD (implementación comentada)"""
-        """
+        """Obtiene todos los usuarios de la base de datos"""
+        conn = None
         try:
-            cursor = self.db_connection.cursor(dictionary=True)
+            conn = get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
             query = '''
                 SELECT u.*, 
                 CONCAT(e.nombre, ' ', e.appat, ' ', e.apmat) AS nombre_estudiante
@@ -454,113 +524,10 @@ class UserManagementWindow:
             '''
             cursor.execute(query)
             return cursor.fetchall()
+            
         except Exception as e:
             messagebox.showerror("Error", f"Error al cargar usuarios:\n{str(e)}")
             return []
-        """
-        # Datos de ejemplo (eliminar en implementación real)
-        return [
-            {
-                "id_usuario": 1,
-                "id_estudiante": 1,
-                "nombre_usuario": "admin",
-                "contrasena": "hashed_password",
-                "correo": "admin@escuela.com",
-                "rol": "Administrador",
-                "estado": "Activo",
-                "ultimo_acceso": "2023-05-15 14:30:00",
-                "fecha_creacion": "2023-01-10",
-                "fecha_actualizacion": "2023-05-15",
-                "notas": "Usuario principal del sistema"
-            },
-            {
-                "id_usuario": 2,
-                "id_estudiante": 2,
-                "nombre_usuario": "coordinador1",
-                "contrasena": "hashed_password",
-                "correo": "coordinador@escuela.com",
-                "rol": "Coordinador",
-                "estado": "Activo",
-                "ultimo_acceso": "2023-06-20 10:15:00",
-                "fecha_creacion": "2023-02-15",
-                "fecha_actualizacion": "2023-06-20",
-                "notas": "Coordinador del club de programación"
-            }
-        ]
-
-    def save_user_to_db(self, user_data, is_update=False):
-        """GUARDAR USUARIO EN BD (implementación comentada)"""
-        """
-        try:
-            cursor = self.db_connection.cursor()
-            
-            if is_update:
-                query = '''UPDATE usuarios SET 
-                          nombre_usuario = %s,
-                          contrasena = IF(%s IS NULL OR %s = '', contrasena, %s),
-                          correo = %s,
-                          rol = %s,
-                          estado = %s,
-                          id_estudiante = %s,
-                          notas = %s
-                          WHERE id_usuario = %s
-                '''
-                params = (
-                    user_data['nombre_usuario'],
-                    user_data['contrasena'],
-                    user_data['contrasena'],
-                    user_data['contrasena'],
-                    user_data['correo'],
-                    user_data['rol'],
-                    user_data['estado'],
-                    user_data['id_estudiante'],
-                    user_data['notas'],
-                    user_data['id_usuario']
-                )
-            else:
-                query = '''INSERT INTO usuarios (
-                          nombre_usuario, contrasena, correo,
-                          rol, estado, id_estudiante,
-                          notas
-                          ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                '''
-                params = (
-                    user_data['nombre_usuario'],
-                    user_data['contrasena'],
-                    user_data['correo'],
-                    user_data['rol'],
-                    user_data['estado'],
-                    user_data['id_estudiante'],
-                    user_data['notas']
-                )
-            
-            cursor.execute(query, params)
-            self.db_connection.commit()
-            return cursor.rowcount > 0
-        except Exception as e:
-            self.db_connection.rollback()
-            messagebox.showerror("Error", f"Error al guardar usuario:\n{str(e)}")
-            return False
-        """
-        return True  # Simulación para pruebas
-
-    def delete_user_from_db(self, user_id):
-        """ELIMINAR USUARIO DE BD (implementación comentada)"""
-        """
-        try:
-            cursor = self.db_connection.cursor()
-            
-            # Verificar si el usuario a eliminar es el mismo que está logueado
-            if hasattr(self.app, 'current_user') and self.app.current_user and self.app.current_user['id_usuario'] == user_id:
-                raise Exception("No puedes eliminar tu propio usuario mientras estás logueado")
-            
-            query = "DELETE FROM usuarios WHERE id_usuario = %s"
-            cursor.execute(query, (user_id,))
-            self.db_connection.commit()
-            return cursor.rowcount > 0
-        except Exception as e:
-            self.db_connection.rollback()
-            messagebox.showerror("Error", f"Error al eliminar usuario:\n{str(e)}")
-            return False
-        """
-        return True  # Simulación para pruebas
+        finally:
+            if conn:
+                conn.close()
