@@ -1,66 +1,51 @@
 import customtkinter as ctk
 from tkinter import messagebox
 from datetime import datetime
+from conn import get_connection
+import re
 
 class MembershipManagementWindow:
     def __init__(self, root, app_manager):
         self.root = root
         self.app = app_manager
         self.current_membership = None
-        self.user = None
         
-        # Frame principal
+        self._create_ui()
+        self.update_memberships_list()
+        self.search_entry.focus()
+    
+    def _create_ui(self):
         self.main_frame = ctk.CTkFrame(self.root)
         self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
-        # Construir interfaz
-        self._create_ui()
-        
-        # Cargar datos iniciales
-        self.update_memberships_list()
-
-    def _create_ui(self):
-        """Construye la interfaz gráfica"""
-        # Configuración del grid principal
+        # Configuración del grid
         self.main_frame.grid_columnconfigure(1, weight=1)
         self.main_frame.grid_rowconfigure(1, weight=1)
         
-        # Frame de búsqueda con botón de regreso
+        # Frame de búsqueda
         search_frame = ctk.CTkFrame(self.main_frame)
         search_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         
-        # Botón para regresar al menú
         ctk.CTkButton(
-            search_frame,
-            text="← Menú",
-            width=80,
-            command=self.return_to_menu,
-            fg_color="#6c757d",
-            hover_color="#5a6268"
+            search_frame, text="← Menú", width=80,
+            command=self.return_to_menu, fg_color="#6c757d"
         ).pack(side="left", padx=(0, 10))
         
         ctk.CTkLabel(search_frame, text="Buscar Membresía:").pack(side="left", padx=(0, 10))
         
         self.search_entry = ctk.CTkEntry(
-            search_frame,
-            width=300,
+            search_frame, width=300,
             placeholder_text="Estudiante, club o estado..."
         )
         self.search_entry.pack(side="left", expand=True, fill="x", padx=(0, 10))
         self.search_entry.bind("<Return>", lambda e: self.search_memberships())
         
         ctk.CTkButton(
-            search_frame,
-            text="Buscar",
-            command=self.search_memberships,
-            width=100
+            search_frame, text="Buscar", command=self.search_memberships, width=100
         ).pack(side="left", padx=(0, 10))
         
         ctk.CTkButton(
-            search_frame,
-            text="Limpiar",
-            command=self.clear_search,
-            width=100
+            search_frame, text="Limpiar", command=self.clear_search, width=100
         ).pack(side="left")
         
         # Lista de membresías
@@ -70,16 +55,12 @@ class MembershipManagementWindow:
         self._create_form()
         
         # Barra de estado
-        self.status_label = ctk.CTkLabel(
-            self.main_frame,
-            text="Listo",
-            anchor="w"
-        )
+        self.status_label = ctk.CTkLabel(self.main_frame, text="Listo", anchor="w")
         self.status_label.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
     
     def _create_memberships_list(self):
-        """Crea el panel de lista de membresías"""
-        self.list_frame = ctk.CTkFrame(self.main_frame, width=400)
+        """Crea el panel de lista de membresías con mejor visualización de botones"""
+        self.list_frame = ctk.CTkFrame(self.main_frame, width=450)  # Aumentamos un poco el ancho
         self.list_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 10))
         self.list_frame.grid_propagate(False)
         
@@ -101,114 +82,91 @@ class MembershipManagementWindow:
             command=self.new_membership
         ).pack(side="right")
         
-        # Lista con scroll
+        # Lista con scroll - aumentamos el ancho mínimo
         self.list_scroll = ctk.CTkScrollableFrame(
             self.list_frame,
-            height=550
+            height=550,
+            width=430  # Ancho mínimo mayor
         )
         self.list_scroll.pack(fill="both", expand=True)
     
     def _create_form(self):
-        """Crea el formulario de edición"""
         self.form_frame = ctk.CTkFrame(self.main_frame)
         self.form_frame.grid(row=1, column=1, sticky="nsew")
-        
-        # Título del formulario
+
         self.form_title = ctk.CTkLabel(
-            self.form_frame,
-            text="Nueva Membresía",
-            font=ctk.CTkFont(size=16, weight="bold")
+            self.form_frame, text="Nueva Membresía", font=ctk.CTkFont(size=16, weight="bold")
         )
         self.form_title.pack(pady=(0, 20))
-        
-        # Campos del formulario
+
         fields = [
-            {"label": "Estudiante*", "var_name": "estudiante_var", "required": True},
-            {"label": "Club*", "var_name": "club_var", "required": True},
-            {"label": "Fecha Inscripción*", "var_name": "fecha_insc_var", "required": True},
-            {"label": "Fecha Expiración", "var_name": "fecha_exp_var"},
-            {"label": "Estado*", "var_name": "estado_var", "required": True},
-            {"label": "Rol*", "var_name": "rol_var", "required": True}
+            {"label": "ID Estudiante*", "name": "student_id"},
+            {"label": "ID Club*", "name": "club_id"},
+            {"label": "Fecha Inscripción*", "name": "start_date", "placeholder": "AAAA-MM-DD"},
+            {"label": "Fecha Expiración", "name": "end_date", "placeholder": "AAAA-MM-DD"},
+            {"label": "Estado*", "name": "status", "type": "combobox", 
+             "values": ["Activa", "Inactiva", "Suspendida", "En proceso"]},
+            {"label": "Rol*", "name": "role", "type": "combobox",
+             "values": ["Miembro", "Coordinador", "Secretario", "Tesorero", "Asesor"]},
         ]
-        
-        self.form_vars = {}
-        
+
+        self.form_widgets = {}
+
         for field in fields:
             frame = ctk.CTkFrame(self.form_frame, fg_color="transparent")
             frame.pack(fill="x", pady=5)
-            
-            label_text = field["label"].replace("*", "") + (" *" if field.get("required") else "")
-            ctk.CTkLabel(frame, text=label_text, width=120).pack(side="left")
-            
-            var = ctk.StringVar()
-            
-            if field["var_name"] == "estado_var":
-                ctk.CTkComboBox(
-                    frame,
-                    variable=var,
-                    values=["Activa", "Inactiva", "Suspendida", "En proceso"],
-                    state="readonly"
-                ).pack(side="right", fill="x", expand=True)
-            elif field["var_name"] == "rol_var":
-                ctk.CTkComboBox(
-                    frame,
-                    variable=var,
-                    values=["Miembro", "Coordinador", "Secretario", "Tesorero", "Asesor"],
-                    state="readonly"
-                ).pack(side="right", fill="x", expand=True)
-            elif field["var_name"] in ["fecha_insc_var", "fecha_exp_var"]:
-                ctk.CTkEntry(
-                    frame,
-                    textvariable=var,
-                    placeholder_text="YYYY-MM-DD"
-                ).pack(side="right", fill="x", expand=True)
+
+            label = ctk.CTkLabel(frame, text=field["label"], width=120)
+            label.pack(side="left")
+
+            if field.get("type") == "combobox":
+                widget = ctk.CTkComboBox(frame, values=field["values"], state="readonly")
+                widget.pack(side="right", fill="x", expand=True)
+                if field["name"] == "status":
+                    widget.set("En proceso")
+                elif field["name"] == "role":
+                    widget.set("Miembro")
             else:
-                ctk.CTkEntry(
-                    frame,
-                    textvariable=var
-                ).pack(side="right", fill="x", expand=True)
-            
-            self.form_vars[field["var_name"]] = var
-        
-        # Botones de acción
+                widget = ctk.CTkEntry(frame)
+                if field.get("placeholder"):
+                    widget.configure(placeholder_text=field["placeholder"])
+                widget.pack(side="right", fill="x", expand=True)
+                
+                if field["name"] == "start_date":
+                    widget.insert(0, datetime.now().strftime("%Y-%m-%d"))
+
+            self.form_widgets[field["name"]] = widget
+
+        # Botones
         button_frame = ctk.CTkFrame(self.form_frame, fg_color="transparent")
         button_frame.pack(fill="x", pady=(20, 0))
-        
+
         ctk.CTkButton(
-            button_frame,
-            text="Guardar",
-            command=self.save_membership,
-            fg_color="#28a745"
+            button_frame, text="Guardar", command=self.save_membership, fg_color="#28a745"
         ).pack(side="left", padx=(0, 10))
-        
+
         ctk.CTkButton(
-            button_frame,
-            text="Cancelar",
-            command=self.cancel_edit
+            button_frame, text="Cancelar", command=self.cancel_edit
         ).pack(side="left", padx=(0, 10))
-        
+
         self.delete_btn = ctk.CTkButton(
-            button_frame,
-            text="Eliminar",
-            command=self.delete_membership,
-            fg_color="#dc3545",
-            state="disabled"
+            button_frame, text="Eliminar", command=self.delete_membership,
+            fg_color="#dc3545", state="disabled"
         )
         self.delete_btn.pack(side="right")
     
     def return_to_menu(self):
-        """Regresa al menú principal"""
         self.app.show_menu(self.app.current_user)
     
     def update_memberships_list(self):
-        """Actualiza la lista de membresías"""
+        """Actualiza la lista de membresías con mejor distribución"""
         for widget in self.list_scroll.winfo_children():
             widget.destroy()
         
-        memberships = self.get_memberships_from_db()
-        self.membership_count_label.configure(text=f"Membresías ({len(memberships)})")
+        self.memberships_data = self.get_memberships_from_db()
+        self.membership_count_label.configure(text=f"Membresías ({len(self.memberships_data)})")
         
-        if not memberships:
+        if not self.memberships_data:
             ctk.CTkLabel(
                 self.list_scroll,
                 text="No se encontraron membresías",
@@ -216,85 +174,232 @@ class MembershipManagementWindow:
             ).pack(pady=20)
             return
         
-        for membership in memberships:
+        for membership in self.memberships_data:
             frame = ctk.CTkFrame(self.list_scroll, height=45)
-            frame.pack(fill="x", pady=2)
+            frame.pack(fill="x", pady=2, padx=2)  # Añadimos padx para espacio lateral
             
-            # Formatear información para mostrar
-            text = (f"{membership['nombre_estudiante']} en {membership['nombre_club']} - "
-                   f"{membership['estado_membresia']} ({membership['rol']})")
+            # Configuramos pesos para la distribución
+            frame.grid_columnconfigure(0, weight=3)  # Más espacio para la info
+            frame.grid_columnconfigure(1, weight=1)  # Menos espacio para el botón
             
-            ctk.CTkLabel(
+            # Texto de la membresía
+            text = (f"Est.ID:{membership['id_estudiante']} Club.ID:{membership['id_club']} - "
+                f"{membership['estado_membresia']} ({membership['rol']})")
+            
+            label = ctk.CTkLabel(
                 frame,
                 text=text,
-                anchor="w"
-            ).pack(side="left", padx=10, fill="x", expand=True)
+                anchor="w",
+                wraplength=300  # Permite ajuste de texto
+            )
+            label.grid(row=0, column=0, sticky="ew", padx=(5, 0))
             
-            ctk.CTkButton(
+            # Botón Editar - ahora más visible
+            edit_btn = ctk.CTkButton(
                 frame,
                 text="Editar",
-                width=60,
-                command=lambda m=membership: self.load_membership_data(m)
-            ).pack(side="right", padx=2)
+                width=70,
+                command=lambda m=membership: self.load_membership_data(m),
+                fg_color="#0d6efd",  # Azul más llamativo
+                hover_color="#0b5ed7"
+            )
+            edit_btn.grid(row=0, column=1, sticky="e", padx=(0, 5))
     
     def load_membership_data(self, membership):
-        """Carga los datos de una membresía en el formulario"""
         self.current_membership = membership
         self.form_title.configure(
-            text=f"Editando: {membership['nombre_estudiante']} en {membership['nombre_club']}"
+            text=f"Editando: Est. ID:{membership['id_estudiante']} en Club ID:{membership['id_club']}"
         )
         self.delete_btn.configure(state="normal")
         
         field_mapping = {
-            "estudiante_var": membership.get("nombre_estudiante", ""),
-            "club_var": membership.get("nombre_club", ""),
-            "fecha_insc_var": membership.get("fecha_inscripcion", ""),
-            "fecha_exp_var": membership.get("fecha_expiracion", ""),
-            "estado_var": membership.get("estado_membresia", "En proceso"),
-            "rol_var": membership.get("rol", "Miembro")
+            "student_id": str(membership.get("id_estudiante", "")),
+            "club_id": str(membership.get("id_club", "")),
+            "start_date": membership.get("fecha_inscripcion", ""),
+            "end_date": membership.get("fecha_expiracion", ""),
+            "status": membership.get("estado_membresia", "En proceso"),
+            "role": membership.get("rol", "Miembro")
         }
-        
-        for var_name, value in field_mapping.items():
-            self.form_vars[var_name].set(value)
+
+        for field_name, value in field_mapping.items():
+            widget = self.form_widgets[field_name]
+            
+            if isinstance(widget, ctk.CTkEntry):
+                widget.delete(0, "end")
+                widget.insert(0, value)
+            elif isinstance(widget, ctk.CTkComboBox):
+                widget.set(value)
     
     def clear_form(self):
-        """Limpia el formulario"""
-        for var in self.form_vars.values():
-            var.set("")
+        for widget in self.form_widgets.values():
+            if isinstance(widget, ctk.CTkEntry):
+                widget.delete(0, "end")
+            elif isinstance(widget, ctk.CTkComboBox):
+                widget.set("")
         
         self.current_membership = None
         self.form_title.configure(text="Nueva Membresía")
         self.delete_btn.configure(state="disabled")
-        self.form_vars["estado_var"].set("En proceso")
-        self.form_vars["rol_var"].set("Miembro")
-        self.form_vars["fecha_insc_var"].set(datetime.now().strftime("%Y-%m-%d"))
+        self.form_widgets["status"].set("En proceso")
+        self.form_widgets["role"].set("Miembro")
+        self.form_widgets["start_date"].insert(0, datetime.now().strftime("%Y-%m-%d"))
     
     def validate_form(self):
-        """Valida los campos del formulario"""
         errors = []
-        
-        required_fields = ["estudiante_var", "club_var", "fecha_insc_var", "estado_var", "rol_var"]
+
+        # Validar campos obligatorios
+        required_fields = ["student_id", "club_id", "start_date", "status", "role"]
         for field in required_fields:
-            if not self.form_vars[field].get():
-                field_name = field.replace("_var", "").replace("_", " ").title()
+            widget = self.form_widgets[field]
+            value = widget.get() if hasattr(widget, 'get') else ""
+            if not value.strip():
+                field_name = field.replace("_", " ").title()
                 errors.append(f"El campo {field_name} es obligatorio")
+
+        # Validar que los IDs sean números
+        student_id = self.form_widgets["student_id"].get().strip()
+        club_id = self.form_widgets["club_id"].get().strip()
         
+        if student_id and not student_id.isdigit():
+            errors.append("El ID del estudiante debe ser un número")
+        
+        if club_id and not club_id.isdigit():
+            errors.append("El ID del club debe ser un número")
+
         # Validar formato de fechas
-        fecha_insc = self.form_vars["fecha_insc_var"].get()
-        fecha_exp = self.form_vars["fecha_exp_var"].get()
+        start_date = self.form_widgets["start_date"].get().strip()
+        end_date = self.form_widgets["end_date"].get().strip()
         
         try:
-            if fecha_insc:
-                datetime.strptime(fecha_insc, "%Y-%m-%d")
-            if fecha_exp:
-                datetime.strptime(fecha_exp, "%Y-%m-%d")
+            if start_date:
+                datetime.strptime(start_date, "%Y-%m-%d")
+            if end_date:
+                datetime.strptime(end_date, "%Y-%m-%d")
         except ValueError:
-            errors.append("Las fechas deben estar en formato YYYY-MM-DD")
+            errors.append("Las fechas deben estar en formato AAAA-MM-DD")
+
+        return errors if errors else None
+    
+    def get_form_data(self):
+        """Obtiene los datos del formulario en un diccionario"""
+        data = {}
         
+        # Obtener valores de los widgets
+        data["id_estudiante"] = int(self.form_widgets["student_id"].get().strip())
+        data["id_club"] = int(self.form_widgets["club_id"].get().strip())
+        data["fecha_inscripcion"] = self.form_widgets["start_date"].get().strip()
+        
+        end_date = self.form_widgets["end_date"].get().strip()
+        data["fecha_expiracion"] = end_date if end_date else None
+        
+        data["estado_membresia"] = self.form_widgets["status"].get()
+        data["rol"] = self.form_widgets["role"].get()
+        
+        return data
+    
+    def save_membership(self):
+        """Guarda los datos de la membresía"""
+        errors = self.validate_form()
         if errors:
             messagebox.showerror("Errores en el formulario", "\n".join(errors))
-            return False
-        return True
+            return
+        
+        membership_data = self.get_form_data()
+        
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            if self.current_membership:
+                # Actualizar membresía existente
+                membership_data["id_membresia"] = self.current_membership["id_membresia"]
+                cursor.execute("""
+                    UPDATE membresias SET
+                    id_estudiante=%s, id_club=%s,
+                    fecha_inscripcion=%s, fecha_expiracion=%s,
+                    estado_membresia=%s, rol=%s
+                    WHERE id_membresia=%s
+                """, (
+                    membership_data["id_estudiante"],
+                    membership_data["id_club"],
+                    membership_data["fecha_inscripcion"],
+                    membership_data["fecha_expiracion"],
+                    membership_data["estado_membresia"],
+                    membership_data["rol"],
+                    membership_data["id_membresia"]
+                ))
+                action = "actualizada"
+            else:
+                # Crear nueva membresía
+                cursor.execute("""
+                    INSERT INTO membresias (
+                        id_estudiante, id_club,
+                        fecha_inscripcion, fecha_expiracion,
+                        estado_membresia, rol
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    membership_data["id_estudiante"],
+                    membership_data["id_club"],
+                    membership_data["fecha_inscripcion"],
+                    membership_data["fecha_expiracion"],
+                    membership_data["estado_membresia"],
+                    membership_data["rol"]
+                ))
+                action = "creada"
+            
+            conn.commit()
+            messagebox.showinfo("Éxito", f"Membresía {action} correctamente")
+            self.update_memberships_list()
+            self.clear_form()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al guardar la membresía: {str(e)}")
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                conn.close()
+    
+    def delete_membership(self):
+        """Elimina la membresía actual"""
+        if not self.current_membership:
+            return
+            
+        confirm = messagebox.askyesno(
+            "Confirmar Eliminación",
+            f"¿Estás seguro de eliminar la membresía:\n\n"
+            f"Estudiante ID: {self.current_membership.get('id_estudiante', '')}\n"
+            f"Club ID: {self.current_membership.get('id_club', '')}\n"
+            f"Rol: {self.current_membership.get('rol', '')}",
+            icon="warning"
+        )
+        
+        if confirm:
+            try:
+                conn = get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute(
+                    "DELETE FROM membresias WHERE id_membresia = %s",
+                    (self.current_membership["id_membresia"],)
+                )
+                conn.commit()
+                
+                if cursor.rowcount > 0:
+                    messagebox.showinfo("Éxito", "Membresía eliminada correctamente")
+                    self.update_memberships_list()
+                    self.clear_form()
+                else:
+                    messagebox.showerror("Error", "No se pudo eliminar la membresía")
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al eliminar membresía: {str(e)}")
+                if conn:
+                    conn.rollback()
+            finally:
+                if conn:
+                    conn.close()
     
     def search_memberships(self):
         """Busca membresías según el criterio"""
@@ -303,13 +408,15 @@ class MembershipManagementWindow:
             self.update_memberships_list()
             return
         
-        memberships = self.get_memberships_from_db()
+        all_memberships = self.get_memberships_from_db()
+        
         filtered = [
-            m for m in memberships
-            if (search_term in m['nombre_estudiante'].lower() or
-                search_term in m['nombre_club'].lower() or
-                search_term in m['estado_membresia'].lower() or
-                search_term in m['rol'].lower())
+            m for m in all_memberships
+            if (search_term in str(m.get("id_estudiante", "")).lower() or
+               search_term in str(m.get("id_club", "")).lower() or
+               search_term in m.get("estado_membresia", "").lower() or
+               search_term in m.get("rol", "").lower()
+            )
         ]
         
         for widget in self.list_scroll.winfo_children():
@@ -319,7 +426,7 @@ class MembershipManagementWindow:
             frame = ctk.CTkFrame(self.list_scroll, height=45)
             frame.pack(fill="x", pady=2)
             
-            text = (f"{membership['nombre_estudiante']} en {membership['nombre_club']} - "
+            text = (f"Est. ID:{membership['id_estudiante']} en Club ID:{membership['id_club']} - "
                    f"{membership['estado_membresia']} ({membership['rol']})")
             
             ctk.CTkLabel(
@@ -346,183 +453,31 @@ class MembershipManagementWindow:
         """Prepara el formulario para nueva membresía"""
         self.clear_form()
     
-    def save_membership(self):
-        """Guarda los datos de la membresía"""
-        if not self.validate_form():
-            return
-        
-        membership_data = {
-            "id_estudiante": self._get_student_id(self.form_vars["estudiante_var"].get()),
-            "id_club": self._get_club_id(self.form_vars["club_var"].get()),
-            "fecha_inscripcion": self.form_vars["fecha_insc_var"].get(),
-            "fecha_expiracion": self.form_vars["fecha_exp_var"].get() or None,
-            "estado_membresia": self.form_vars["estado_var"].get(),
-            "rol": self.form_vars["rol_var"].get()
-        }
-        
-        if self.current_membership:
-            membership_data["id_membresia"] = self.current_membership["id_membresia"]
-            success = self.save_membership_to_db(membership_data, is_update=True)
-            action = "actualizada"
-        else:
-            success = self.save_membership_to_db(membership_data)
-            action = "creada"
-        
-        if success:
-            messagebox.showinfo("Éxito", f"Membresía {action} correctamente")
-            self.update_memberships_list()
-            self.clear_form()
-    
-    def delete_membership(self):
-        """Elimina la membresía actual"""
-        if not self.current_membership:
-            return
-            
-        confirmacion = messagebox.askyesno(
-            "Confirmar Eliminación",
-            f"¿Estás seguro de eliminar la membresía:\n\n"
-            f"Estudiante: {self.current_membership['nombre_estudiante']}\n"
-            f"Club: {self.current_membership['nombre_club']}\n"
-            f"Rol: {self.current_membership['rol']}",
-            icon="warning"
-        )
-        
-        if confirmacion:
-            success = self.delete_membership_from_db(self.current_membership["id_membresia"])
-            
-            if success:
-                messagebox.showinfo("Éxito", "Membresía eliminada correctamente")
-                self.update_memberships_list()
-                self.clear_form()
-            else:
-                messagebox.showerror("Error", "No se pudo eliminar la membresía")
-    
     def cancel_edit(self):
         """Cancela la edición actual"""
         self.clear_form()
 
     # ======================
-    # MÉTODOS DE BASE DE DATOS (COMENTADOS)
+    # MÉTODOS DE BASE DE DATOS
     # ======================
 
-    def _get_student_id(self, student_name):
-        """Obtiene ID de estudiante desde nombre (simulado)"""
-        # En implementación real, harías una consulta a la base de datos
-        # Ejemplo:
-        # cursor = self.db_connection.cursor()
-        # cursor.execute("SELECT id_estudiante FROM estudiantes WHERE CONCAT(nombre, ' ', appat, ' ', apmat) = %s", (student_name,))
-        # result = cursor.fetchone()
-        # return result[0] if result else None
-        return 1  # Valor simulado para pruebas
-
-    def _get_club_id(self, club_name):
-        """Obtiene ID de club desde nombre (simulado)"""
-        # Similar a _get_student_id pero para clubs
-        return 1  # Valor simulado para pruebas
-
     def get_memberships_from_db(self):
-        """OBTENER MEMBRESÍAS DESDE BD (implementación comentada)"""
-        """
+        """Obtiene todas las membresías de la base de datos"""
+        conn = None
         try:
-            cursor = self.db_connection.cursor(dictionary=True)
-            query = '''
-                SELECT m.*, 
-                CONCAT(e.nombre, ' ', e.appat, ' ', e.apmat) AS nombre_estudiante,
-                c.nombre_club
+            conn = get_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT m.id_membresia, m.id_estudiante, m.id_club,
+                       m.fecha_inscripcion, m.fecha_expiracion,
+                       m.estado_membresia, m.rol
                 FROM membresias m
-                JOIN estudiantes e ON m.id_estudiante = e.id_estudiante
-                JOIN clubes c ON m.id_club = c.id_club
-                ORDER BY nombre_estudiante, nombre_club
-            '''
-            cursor.execute(query)
+                ORDER BY m.id_estudiante, m.id_club
+            """)
             return cursor.fetchall()
         except Exception as e:
-            messagebox.showerror("Error", f"Error al cargar membresías:\n{str(e)}")
+            messagebox.showerror("Error", f"Error al cargar membresías: {str(e)}")
             return []
-        """
-        # Datos de ejemplo (eliminar en implementación real)
-        return [
-            {
-                "id_membresia": 1,
-                "id_estudiante": 1,
-                "id_club": 1,
-                "fecha_inscripcion": "2023-01-15",
-                "fecha_expiracion": "2023-12-31",
-                "estado_membresia": "Activa",
-                "rol": "Miembro",
-                "nombre_estudiante": "Juan Pérez López",
-                "nombre_club": "Club de Programación"
-            },
-            {
-                "id_membresia": 2,
-                "id_estudiante": 2,
-                "id_club": 2,
-                "fecha_inscripcion": "2023-02-20",
-                "fecha_expiracion": None,
-                "estado_membresia": "En proceso",
-                "rol": "Coordinador",
-                "nombre_estudiante": "María García Sánchez",
-                "nombre_club": "Club de Robótica"
-            }
-        ]
-
-    def save_membership_to_db(self, membership_data, is_update=False):
-        """GUARDAR MEMBRESÍA EN BD (implementación comentada)"""
-        """
-        try:
-            cursor = self.db_connection.cursor()
-            
-            if is_update:
-                query = '''UPDATE membresias SET 
-                          id_estudiante = %s, id_club = %s, 
-                          fecha_inscripcion = %s, fecha_expiracion = %s,
-                          estado_membresia = %s, rol = %s
-                          WHERE id_membresia = %s'''
-                params = (
-                    membership_data['id_estudiante'],
-                    membership_data['id_club'],
-                    membership_data['fecha_inscripcion'],
-                    membership_data['fecha_expiracion'],
-                    membership_data['estado_membresia'],
-                    membership_data['rol'],
-                    membership_data['id_membresia']
-                )
-            else:
-                query = '''INSERT INTO membresias (
-                          id_estudiante, id_club, fecha_inscripcion,
-                          fecha_expiracion, estado_membresia, rol
-                          ) VALUES (%s, %s, %s, %s, %s, %s)'''
-                params = (
-                    membership_data['id_estudiante'],
-                    membership_data['id_club'],
-                    membership_data['fecha_inscripcion'],
-                    membership_data['fecha_expiracion'],
-                    membership_data['estado_membresia'],
-                    membership_data['rol']
-                )
-            
-            cursor.execute(query, params)
-            self.db_connection.commit()
-            return True
-        except Exception as e:
-            self.db_connection.rollback()
-            messagebox.showerror("Error", f"Error al guardar membresía:\n{str(e)}")
-            return False
-        """
-        return True  # Simulación para pruebas
-
-    def delete_membership_from_db(self, membership_id):
-        """ELIMINAR MEMBRESÍA DE BD (implementación comentada)"""
-        """
-        try:
-            cursor = self.db_connection.cursor()
-            query = "DELETE FROM membresias WHERE id_membresia = %s"
-            cursor.execute(query, (membership_id,))
-            self.db_connection.commit()
-            return cursor.rowcount > 0
-        except Exception as e:
-            self.db_connection.rollback()
-            messagebox.showerror("Error", f"Error al eliminar membresía:\n{str(e)}")
-            return False
-        """
-        return True  # Simulación para pruebas
+        finally:
+            if conn:
+                conn.close()
