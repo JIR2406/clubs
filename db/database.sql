@@ -102,34 +102,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
     FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Table: eventos_club (Club Events)
-CREATE TABLE IF NOT EXISTS eventos_club (
-    id_evento INT AUTO_INCREMENT PRIMARY KEY,
-    id_club INT NOT NULL,
-    titulo VARCHAR(100) NOT NULL,
-    descripcion TEXT,
-    fecha_inicio DATETIME NOT NULL,
-    fecha_fin DATETIME,
-    ubicacion VARCHAR(255),
-    estado ENUM('Planificado', 'Confirmado', 'Cancelado', 'Completado') DEFAULT 'Planificado',
-    FOREIGN KEY (id_club) REFERENCES clubes(id_club) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- Table: asistencia_eventos (Event Attendance)
-CREATE TABLE IF NOT EXISTS asistencia_eventos (
-    id_asistencia INT AUTO_INCREMENT PRIMARY KEY,
-    id_evento INT NOT NULL,
-    id_estudiante INT NOT NULL,
-    asistio BOOLEAN DEFAULT FALSE,
-    fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    notas TEXT,
-    FOREIGN KEY (id_evento) REFERENCES eventos_club(id_evento) ON DELETE CASCADE,
-    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE CASCADE,
-    UNIQUE KEY unique_asistencia (id_evento, id_estudiante)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Create indexes for better performance
 CREATE INDEX idx_estudiante_nombre ON estudiantes(nombre, appat, apmat);
 CREATE INDEX idx_club_nombre ON clubes(nombre_club);
 CREATE INDEX idx_membresia_estado ON membresias(estado_membresia);
-CREATE INDEX idx_evento_fecha ON eventos_club(fecha_inicio);
